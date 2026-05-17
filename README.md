@@ -15,7 +15,7 @@ Opis projektu
 
 ---
 
-##Struktura projektu
+## Struktura projektu
 
 Glorp
 
