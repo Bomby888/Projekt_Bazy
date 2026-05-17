@@ -1,0 +1,69 @@
+Table events {
+  id integer [primary key]
+  eonet_id varchar [unique, not null]
+  title varchar [not null]
+  description text
+  link varchar
+  status varchar [note: 'open or closed']
+  closed_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table categories {
+  id integer [primary key]
+  eonet_category_id integer [unique, not null]
+  title varchar [not null]
+  description text
+  link varchar
+  layers_link varchar
+}
+
+Table event_categories {
+  event_id integer [not null]
+  category_id integer [not null]
+}
+
+Table sources {
+  id integer [primary key]
+  eonet_source_id varchar [unique, not null]
+  title varchar [not null]
+  source_url varchar
+  link varchar
+}
+
+Table event_sources {
+  event_id integer [not null]
+  source_id integer [not null]
+}
+
+Table event_geometries {
+  id integer [primary key]
+  event_id integer [not null]
+  geometry_date timestamp
+  geometry_type varchar [note: 'Point or Polygon']
+  longitude decimal
+  latitude decimal
+  coordinates_json text [note: 'Full GeoJSON coordinates, useful for polygons']
+  created_at timestamp
+}
+
+Table import_log {
+  id integer [primary key]
+  started_at timestamp
+  finished_at timestamp
+  endpoint_url varchar
+  status varchar [note: 'success or error']
+  records_downloaded integer
+  records_inserted integer
+  records_updated integer
+  error_message text
+}
+
+Ref: event_categories.event_id > events.id
+Ref: event_categories.category_id > categories.id
+
+Ref: event_sources.event_id > events.id
+Ref: event_sources.source_id > sources.id
+
+Ref: event_geometries.event_id > events.id

@@ -1,12 +1,12 @@
 # Projekt - #TD
 
-Opis projektu
-
+Projekt korzysta z API EONET- Earth Natural Event Tracker.
 
 ---
 
 ## Funkcje
 
+![Diagram ERD](assets/diagram.png)
 
 ---
 
