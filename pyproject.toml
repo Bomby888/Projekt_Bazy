@@ -1,0 +1,9 @@
+[project]
+name = "nasa-eonet-db"
+version = "0.1.0"
+description = "Import danych z NASA EONET API do bazy SQLite"
+requires-python = ">=3.11"
+dependencies = [
+    "requests",
+    "python-dotenv"
+]
