@@ -3,30 +3,45 @@ from typing import Any
 
 def search_events(
     db_path: str,
-    category_title: str | None = None,
     status: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     limit: int = 100,
-    sort_by: str = "recent"
+    sort_by: str = "recent",
+    white_list: list[str] | None = None,      # Zastępuje category_title
+    black_list: list[str] | None = None,      # Czarna lista
+    min_lon: float | None = None,             # Filtry współrzędnych (BBox)
+    max_lon: float | None = None,
+    min_lat: float | None = None,
+    max_lat: float | None = None
 ) -> list[tuple]:
     
-    # 1. Baza zapytania
+    # 1. Walidacja konfliktów między listami
+    if white_list and black_list:
+        conflicts = set(white_list).intersection(set(black_list))
+        if conflicts:
+            raise ValueError(f"Błąd logiczny: Kategorie {conflicts} znajdują się jednocześnie na Białej i Czarnej liście!")
+
+    # 2. Baza zapytania SQL
     query = """
-        SELECT DISTINCT e.id, e.title, e.status, e.created_at, c.title AS category_name
+        SELECT DISTINCT 
+            e.id, 
+            e.title, 
+            e.status, 
+            e.created_at, 
+            c.title AS category_name,
+            eg.longitude,
+            eg.latitude
         FROM events e
         LEFT JOIN event_categories ec ON e.id = ec.event_id
         LEFT JOIN categories c ON ec.category_id = c.id
+        LEFT JOIN event_geometries eg ON e.id = eg.event_id
         WHERE 1=1
     """
     
     params = []
 
-    # 2. Dynamiczne warunki WHERE
-    if category_title:
-        query += " AND c.title = ?"
-        params.append(category_title)
-
+    # 3. Dynamiczne warunki WHERE (Status i Daty)
     if status:
         query += " AND e.status = ?"
         params.append(status)
@@ -39,45 +54,45 @@ def search_events(
         query += " AND date(e.created_at) <= date(?)"
         params.append(date_to)
         
-    # 3. PYTHON SWITCH-CASE (match-case): Bezpieczne doklejanie sortowania
+    # 4. Logika Białej i Czarnej listy (White list ma priorytet)
+    if white_list:
+        placeholders = ", ".join(["?"] * len(white_list))
+        query += f" AND c.title IN ({placeholders})"
+        params.extend(white_list)
+    elif black_list:
+        placeholders = ", ".join(["?"] * len(black_list))
+        query += f" AND c.title NOT IN ({placeholders})"
+        params.extend(black_list)
+
+    # 5. Filtrowanie obszaru (Współrzędne geograficzne)
+    if min_lon is not None:
+        query += " AND eg.longitude >= ?"
+        params.append(min_lon)
+    if max_lon is not None:
+        query += " AND eg.longitude <= ?"
+        params.append(max_lon)
+    if min_lat is not None:
+        query += " AND eg.latitude >= ?"
+        params.append(min_lat)
+    if max_lat is not None:
+        query += " AND eg.latitude <= ?"
+        params.append(max_lat)
+
+    # 6. Sortowanie
     match sort_by.lower():
-        case "alphabetical":
-            # Sortowanie standardowe od A do Z po tytule
-            query += " ORDER BY e.title ASC"
-            
-        case "location":
-            # Ciekawy trik: ponieważ w danych od NASA lokalizacja (np. 'Blaine, Idaho') 
-            # jest na końcu tytułu po przecinku, sortujemy od końca. 
-            # Działa to świetnie dla amerykańskich formatów 'Nazwa, Stan'.
-            query += " ORDER BY SUBSTR(e.title, INSTR(e.title, ', ') + 2) ASC"
-            
+        case "oldest":
+            query += " ORDER BY e.created_at ASC"
         case "recent" | _:
-            # Domyślne sortowanie (najnowsze zdarzenia na górze)
-            # Znak | działa jak "lub", a _ to opcja domyślna (fallback)
             query += " ORDER BY e.created_at DESC"
 
-    # 4. Limit na samym końcu
+    # 7. Limit
     query += " LIMIT ?"
     params.append(limit)
 
-    # 5. Wykonanie zapytania
+    # 8. Wykonanie zapytania
     with sqlite3.connect(db_path) as conn:
         cur = conn.cursor()
         cur.execute(query, params)
         results = cur.fetchall()
         
     return results
-
-
-db = "data/eonet.db"
-
-wyniki_lokalizacja = search_events(db, sort_by="location", limit=10)
-
-wyniki = search_events(db, limit=10)
-
-print("\n--- SORTOWANIE DOMYŚLNE (Najnowsze) ---\n")
-for w in wyniki:
-    print(w)
-print("\n--- SORTOWANIE PO LOKALIZACJI ---\n")
-for w in wyniki_lokalizacja:
-    print(w)
