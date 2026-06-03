@@ -72,7 +72,32 @@ class EonetUI(QMainWindow):
         filters_layout.addStretch() # Wypycha elementy ładnie do góry, żeby nie wisiały na środku
 
 
+        # --- PRAWY PANEL (Mapa Folium w silniku przeglądarki) ---
+        self.web_view = QWebEngineView()
+        self.init_map()
+
+
+        main_layout.addWidget(self.web_view)    
         main_layout.addWidget(filters_group)
+
+    def init_map(self):
+            """Generuje startową mapę folium i wstrzykuje ją do widoku PyQt"""
+            # location=[0,0] to środek globu, zoom_start=2 pokazuje ładnie cały świat
+            m = folium.Map(location=[0, 0], zoom_start=2, tiles="CartoDB positron")
+            
+            # Przykładowa pinezka, żebyś widział, jak to działa
+            folium.Marker(
+                location=[37.77, -122.42],
+                popup="San Francisco - Tu coś się dzieje!",
+                icon=folium.Icon(color="red", icon="info-sign")
+            ).add_to(m)
+
+            # Zamiana mapy Pythona na kod HTML i przekazanie jej bez zapisywania pliku na dysku
+            data = io.BytesIO()
+            m.save(data, close_file=False)
+            html_content = data.getvalue().decode()
+            self.web_view.setHtml(html_content)
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
