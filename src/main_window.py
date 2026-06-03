@@ -83,7 +83,7 @@ class EonetUI(QMainWindow):
     def init_map(self):
             """Generuje startową mapę folium i wstrzykuje ją do widoku PyQt"""
             # location=[0,0] to środek globu, zoom_start=2 pokazuje ładnie cały świat
-            m = folium.Map(location=[0, 0], zoom_start=2, tiles="CartoDB positron")
+            m = folium.Map(location=[0, 0], zoom_start=2, tiles="CartoDB positron", world_copy_jump=True)
             
             # Przykładowa pinezka, żebyś widział, jak to działa
             folium.Marker(
