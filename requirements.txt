@@ -3,3 +3,4 @@ python-dotenv
 folium
 PySide6
 plotly
+pandas
