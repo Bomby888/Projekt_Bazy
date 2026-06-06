@@ -174,11 +174,15 @@ class EonetUI(QMainWindow):
         sort_val = "oldest" if self.sort_combo.currentText() == "Najstarsze" else "recent"
 
         # BBox (Współrzędne) - sprawdzamy czy użytkownik zaznaczył checkbox
+        bbox_coords = None # Zmienna do przekazania narysowania obszaru
         if self.enable_bbox_cb.isChecked():
             min_lon_val = self.min_lon.value()
             max_lon_val = self.max_lon.value()
             min_lat_val = self.min_lat.value()
             max_lat_val = self.max_lat.value()
+
+            # Zapisujemy do krotki, żeby przekazać do rysowania
+            bbox_coords = (min_lon_val, max_lon_val, min_lat_val, max_lat_val)
         else:
             min_lon_val = max_lon_val = min_lat_val = max_lat_val = None
 
@@ -192,17 +196,37 @@ class EonetUI(QMainWindow):
                 min_lat=min_lat_val, max_lat=max_lat_val
             )
             print(f"Znaleziono {len(results)} zdarzeń z podanymi filtrami!")
-            self.update_map(results)
+            # ZMIANA: Przekazujemy bbox_coords do aktualizacji mapy
+            self.update_map(results, bbox=bbox_coords)
             
         except ValueError as e:
             # Przechwytujemy błąd kolegi (gdy ta sama kategoria jest na obu listach)
             print(f"Błąd filtrów: {e}")
 
 
-    def update_map(self, events):
+    def update_map(self, events, bbox = None):
         """Rysuje mapę od nowa na podstawie wyników z bazy danych"""
         m = folium.Map(location=[0, 0], zoom_start=2, tiles="CartoDB positron", world_copy_jump=True)
         
+        # --- NOWOŚĆ: Rysowanie obszaru BBox ---
+        if bbox:
+            min_lon, max_lon, min_lat, max_lat = bbox
+            # Definiujemy rogi prostokąta (Folium wymaga formatu [lat, lon])
+            bounds = [[min_lat, min_lon], [max_lat, max_lon]]
+            
+            folium.Rectangle(
+                bounds=bounds,
+                color="#0078A8",       # Kolor obramowania
+                weight=2,              # Grubość linii
+                fill=True,
+                fill_color="#0078A8",  # Kolor wypełnienia
+                fill_opacity=0.2       # Przezroczystość (20%)
+            ).add_to(m)
+            
+            # Automatyczne dostosowanie kamery do narysowanego obszaru
+            m.fit_bounds(bounds)
+        # --------------------------------------
+
         for event in events:
             # Struktura krotki wg SQL Twojego kolegi: 
             # 0:id, 1:title, 2:status, 3:created_at, 4:category_name, 5:lon, 6:lat
