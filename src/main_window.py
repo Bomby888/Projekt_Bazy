@@ -5,8 +5,9 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QDateEdit, QListWidget, QSpinBox,
     QPushButton, QAbstractItemView, QGroupBox, QDoubleSpinBox, QCheckBox, 
-    QMessageBox
+    QMessageBox, QTabWidget
 )
+import plotly.express as px 
 from PySide6.QtCore import QDate
 from PySide6.QtWebEngineWidgets import QWebEngineView
 import sqlite3
