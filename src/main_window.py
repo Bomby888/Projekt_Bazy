@@ -4,7 +4,7 @@ import folium
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QDateEdit, QListWidget, QSpinBox,
-    QPushButton, QAbstractItemView, QGroupBox
+    QPushButton, QAbstractItemView, QGroupBox, QDoubleSpinBox, QCheckBox
 )
 from PySide6.QtCore import QDate
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -51,9 +51,7 @@ class EonetUI(QMainWindow):
         filters_layout.addWidget(QLabel("Kategorie (Biała lista):"))
         self.category_list = QListWidget()
         # Pozwala zaznaczać wiele elementów (z wciśniętym Ctrl lub Shift)
-        self.category_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
-        # Tu w przyszłości pobierzesz kategorie z bazy, na razie dodajemy na sztywno
-        self.load_categories()
+        self.category_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)     
         filters_layout.addWidget(self.category_list)
 
         # Limit wyników (limit)
@@ -62,6 +60,47 @@ class EonetUI(QMainWindow):
         self.limit_spin.setRange(1, 1000)
         self.limit_spin.setValue(100) # Domyślnie 100 tak jak w funkcji kolegi
         filters_layout.addWidget(self.limit_spin)
+
+        # Kategorie - Czarna lista (black_list)
+        filters_layout.addWidget(QLabel("Kategorie (Czarna lista):"))
+        self.black_list_widget = QListWidget()
+        self.black_list_widget.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        filters_layout.addWidget(self.black_list_widget)
+
+        self.load_categories()
+
+        # Sortowanie (sort_by)
+        filters_layout.addWidget(QLabel("Sortowanie:"))
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems(["Najnowsze", "Najstarsze"])
+        filters_layout.addWidget(self.sort_combo)
+
+        # Współrzędne Geograficzne (BBox)
+        bbox_group = QGroupBox("Ogranicz obszar wyszukiwania")
+        bbox_layout = QVBoxLayout()
+        
+        self.enable_bbox_cb = QCheckBox("Aktywuj filtr współrzędnych")
+        bbox_layout.addWidget(self.enable_bbox_cb)
+
+        # Pola liczbowe z ułamkami (z domyślnymi zakresami dla globu)
+        self.min_lon = QDoubleSpinBox(); self.min_lon.setRange(-180, 180); self.min_lon.setEnabled(False)
+        self.max_lon = QDoubleSpinBox(); self.max_lon.setRange(-180, 180); self.max_lon.setEnabled(False)
+        self.min_lat = QDoubleSpinBox(); self.min_lat.setRange(-90, 90); self.min_lat.setEnabled(False)
+        self.max_lat = QDoubleSpinBox(); self.max_lat.setRange(-90, 90); self.max_lat.setEnabled(False)
+
+        # Podpięcie logiki: kliknięcie checkboxa włącza/wyłącza pola
+        self.enable_bbox_cb.toggled.connect(self.min_lon.setEnabled)
+        self.enable_bbox_cb.toggled.connect(self.max_lon.setEnabled)
+        self.enable_bbox_cb.toggled.connect(self.min_lat.setEnabled)
+        self.enable_bbox_cb.toggled.connect(self.max_lat.setEnabled)
+
+        bbox_layout.addWidget(QLabel("Min Długość (Lon):")); bbox_layout.addWidget(self.min_lon)
+        bbox_layout.addWidget(QLabel("Max Długość (Lon):")); bbox_layout.addWidget(self.max_lon)
+        bbox_layout.addWidget(QLabel("Min Szerokość (Lat):")); bbox_layout.addWidget(self.min_lat)
+        bbox_layout.addWidget(QLabel("Max Szerokość (Lat):")); bbox_layout.addWidget(self.max_lat)
+        
+        bbox_group.setLayout(bbox_layout)
+        filters_layout.addWidget(bbox_group)
 
         # Przycisk wyszukiwania
         self.search_btn = QPushButton("Szukaj na mapie")
@@ -91,6 +130,7 @@ class EonetUI(QMainWindow):
                 cur.execute("SELECT title FROM categories ORDER BY title")
                 categories = [row[0] for row in cur.fetchall()]
                 self.category_list.addItems(categories)
+                self.black_list_widget.addItems(categories)
         except sqlite3.Error as e:
             print(f"Błąd bazy danych przy ładowaniu kategorii: {e}")
 
@@ -116,34 +156,47 @@ class EonetUI(QMainWindow):
 
     def perform_search(self):
         """Zbiera dane z UI i wywołuje funkcję search_events"""
-        # 1. Zbieranie wartości z kontrolek interfejsu
         status_val = self.status_combo.currentText()
-        if status_val == "Wszystkie":
-            status_val = None # Funkcja kolegi oczekuje None, gdy nie filtrujemy po statusie
+        if status_val == "Wszystkie": status_val = None
             
         date_from_val = self.date_from.date().toString("yyyy-MM-dd")
         date_to_val = self.date_to.date().toString("yyyy-MM-dd")
-        
-        # Pobieranie tylko zaznaczonych kategorii jako biała lista
-        selected_items = self.category_list.selectedItems()
-        white_list_val = [item.text() for item in selected_items] if selected_items else None
-        
         limit_val = self.limit_spin.value()
-
-        # 2. Wywołanie funkcji bazodanowej
-        print("Szukam zdarzeń...")
-        results = search_events(
-            db_path=self.db_path,
-            status=status_val,
-            date_from=date_from_val,
-            date_to=date_to_val,
-            limit=limit_val,
-            white_list=white_list_val
-        )
-        print(f"Znaleziono {len(results)} zdarzeń z podanymi filtrami!")
         
-        # 3. Zaktualizowanie mapy z nowymi wynikami
-        self.update_map(results)
+        # Listy kategorii
+        sel_white = self.category_list.selectedItems()
+        white_list_val = [item.text() for item in sel_white] if sel_white else None
+        
+        sel_black = self.black_list_widget.selectedItems()
+        black_list_val = [item.text() for item in sel_black] if sel_black else None
+
+        # Sortowanie (Mapowanie z polskiego UI na angielske zapytanie SQL)
+        sort_val = "oldest" if self.sort_combo.currentText() == "Najstarsze" else "recent"
+
+        # BBox (Współrzędne) - sprawdzamy czy użytkownik zaznaczył checkbox
+        if self.enable_bbox_cb.isChecked():
+            min_lon_val = self.min_lon.value()
+            max_lon_val = self.max_lon.value()
+            min_lat_val = self.min_lat.value()
+            max_lat_val = self.max_lat.value()
+        else:
+            min_lon_val = max_lon_val = min_lat_val = max_lat_val = None
+
+        print("Szukam zdarzeń...")
+        try:
+            results = search_events(
+                db_path=self.db_path, status=status_val, date_from=date_from_val,
+                date_to=date_to_val, limit=limit_val, sort_by=sort_val,
+                white_list=white_list_val, black_list=black_list_val,
+                min_lon=min_lon_val, max_lon=max_lon_val, 
+                min_lat=min_lat_val, max_lat=max_lat_val
+            )
+            print(f"Znaleziono {len(results)} zdarzeń z podanymi filtrami!")
+            self.update_map(results)
+            
+        except ValueError as e:
+            # Przechwytujemy błąd kolegi (gdy ta sama kategoria jest na obu listach)
+            print(f"Błąd filtrów: {e}")
 
 
     def update_map(self, events):
