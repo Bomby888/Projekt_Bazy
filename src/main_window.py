@@ -11,7 +11,7 @@ import plotly.express as px
 from PySide6.QtCore import QDate
 from PySide6.QtWebEngineWidgets import QWebEngineView
 import sqlite3
-from db_queries import search_events
+from db_queries import search_events, get_status_distribution, get_top_categories, get_events_over_time
 
 class EonetUI(QMainWindow):
     def __init__(self):
@@ -20,11 +20,15 @@ class EonetUI(QMainWindow):
         self.setWindowTitle("NASA EONET - Wyszukiwarka Zdarzeń")
         self.resize(1200, 800) # Startowy rozmiar okna
 
-        # 1. Główny widget i układ (Podział na Lewo: filtry, Prawo: mapa)
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
+        # GŁÓWNY KONTENER NA ZAKŁADKI
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
 
+        # --- ZAKŁADKA 1: WYSZUKIWARKA I MAPA ---
+        self.tab_map = QWidget()
+        main_layout = QHBoxLayout(self.tab_map)
+        self.tabs.addTab(self.tab_map, "Wyszukiwarka i Mapa")
+       
         # --- LEWY PANEL (Kontrolki) ---
         filters_layout = QVBoxLayout()
         filters_group = QGroupBox("Filtry Wyszukiwania")
@@ -124,6 +128,30 @@ class EonetUI(QMainWindow):
         # Uruchomienie paska stanu na dole okna
         self.statusBar().showMessage("Aplikacja gotowa do pracy.")
 
+        # --- ZAKŁADKA 2: DASHBOARD ANALITYCZNY ---
+        self.tab_dashboard = QWidget()
+        dash_layout = QVBoxLayout(self.tab_dashboard)
+        self.tabs.addTab(self.tab_dashboard, "Raporty i Analizy")
+
+        # Przycisk odświeżania raportów
+        self.refresh_dash_btn = QPushButton("Generuj najnowsze raporty")
+        self.refresh_dash_btn.clicked.connect(self.generate_dashboard)
+        self.refresh_dash_btn.setStyleSheet("background-color: #2b5c8f; color: white; padding: 10px; font-weight: bold;")
+        dash_layout.addWidget(self.refresh_dash_btn)
+
+        # Układ poziomy dla dwóch wykresów kołowych obok siebie
+        pie_charts_layout = QHBoxLayout()
+        self.chart_status_view = QWebEngineView()
+        self.chart_categories_view = QWebEngineView()
+        pie_charts_layout.addWidget(self.chart_status_view)
+        pie_charts_layout.addWidget(self.chart_categories_view)
+        
+        # Widok dla wykresu liniowego (na całej szerokości pod spodem)
+        self.chart_time_view = QWebEngineView()
+
+        dash_layout.addLayout(pie_charts_layout)
+        dash_layout.addWidget(self.chart_time_view)
+
 
     def load_categories(self):
         """Pobiera unikalne kategorie z bazy i wrzuca do listy w UI"""
@@ -215,7 +243,6 @@ class EonetUI(QMainWindow):
         """Rysuje mapę od nowa na podstawie wyników z bazy danych"""
         m = folium.Map(location=[0, 0], zoom_start=2, tiles="CartoDB positron", world_copy_jump=True)
         
-        # --- NOWOŚĆ: Rysowanie obszaru BBox ---
         if bbox:
             min_lon, max_lon, min_lat, max_lat = bbox
             # Definiujemy rogi prostokąta (Folium wymaga formatu [lat, lon])
@@ -232,17 +259,13 @@ class EonetUI(QMainWindow):
             
             # Automatyczne dostosowanie kamery do narysowanego obszaru
             m.fit_bounds(bounds)
-        # --------------------------------------
 
         for event in events:
-            # Struktura krotki wg SQL Twojego kolegi: 
-            # 0:id, 1:title, 2:status, 3:created_at, 4:category_name, 5:lon, 6:lat
             title = event[1]
             cat_name = event[4]
             lon = event[5]
             lat = event[6]
             
-            # Zdarzenia z NASA czasem nie mają dokładnych współrzędnych, więc zabezpieczamy się:
             if lat is not None and lon is not None:
                 folium.Marker(
                     location=[lat, lon],
@@ -255,6 +278,40 @@ class EonetUI(QMainWindow):
         m.save(data, close_file=False)
         self.web_view.setHtml(data.getvalue().decode())
 
+    def generate_dashboard(self):
+        """Pobiera dane z bazy poprzez db_queries i generuje wykresy Plotly"""
+        self.statusBar().showMessage("Generowanie raportów, proszę czekać...")
+        QApplication.processEvents()
+
+        try:
+            # 1. Wykres: Status (Open vs Closed)
+            data_status = get_status_distribution(self.db_path)
+            if data_status:
+                labels = [row[0].capitalize() for row in data_status]
+                values = [row[1] for row in data_status]
+                fig_status = px.pie(names=labels, values=values, title="Status zdarzeń", color_discrete_sequence=['#ef553b', '#636efa'])
+                self.chart_status_view.setHtml(fig_status.to_html(include_plotlyjs='cdn'))
+
+            # 2. Wykres: Udział kategorii
+            data_cat = get_top_categories(self.db_path)
+            if data_cat:
+                labels = [row[0] for row in data_cat]
+                values = [row[1] for row in data_cat]
+                fig_cat = px.pie(names=labels, values=values, hole=0.4, title="Top 10 Najczęstszych Kategorii")
+                self.chart_categories_view.setHtml(fig_cat.to_html(include_plotlyjs='cdn'))
+
+            # 3. Wykres: Zdarzenia w czasie (Liniowy)
+            data_time = get_events_over_time(self.db_path)
+            if data_time:
+                x_months = [row[0] for row in data_time]
+                y_counts = [row[1] for row in data_time]
+                fig_time = px.line(x=x_months, y=y_counts, markers=True, title="Liczba nowych zdarzeń w czasie (Miesiące)", labels={'x': 'Data', 'y': 'Liczba zdarzeń'})
+                fig_time.update_traces(line_color="#0078A8")
+                self.chart_time_view.setHtml(fig_time.to_html(include_plotlyjs='cdn'))
+
+            self.statusBar().showMessage("Raporty zostały wygenerowane pomyślnie.")
+        except Exception as e:
+            QMessageBox.critical(self, "Błąd generowania raportów", f"Wystąpił błąd przy pobieraniu danych: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
