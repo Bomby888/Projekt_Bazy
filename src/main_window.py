@@ -63,7 +63,7 @@ class EonetUI(QMainWindow):
         # Limit wyników (limit)
         filters_layout.addWidget(QLabel("Limit wyników:"))
         self.limit_spin = QSpinBox()
-        self.limit_spin.setRange(1, 1000)
+        self.limit_spin.setRange(1, 500)
         self.limit_spin.setValue(100) # Domyślnie 100 tak jak w funkcji kolegi
         filters_layout.addWidget(self.limit_spin)
 
@@ -173,13 +173,6 @@ class EonetUI(QMainWindow):
             # location=[0,0] to środek globu, zoom_start=2 pokazuje ładnie cały świat
             m = folium.Map(location=[0, 0], zoom_start=2, tiles="CartoDB positron", world_copy_jump=True)
             
-            # Przykładowa pinezka, żebyś widział, jak to działa
-            folium.Marker(
-                location=[37.77, -122.42],
-                popup="San Francisco - Tu coś się dzieje!",
-                icon=folium.Icon(color="red", icon="info-sign")
-            ).add_to(m)
-
             # Zamiana mapy Pythona na kod HTML i przekazanie jej bez zapisywania pliku na dysku
             data = io.BytesIO()
             m.save(data, close_file=False)
@@ -233,10 +226,10 @@ class EonetUI(QMainWindow):
             # ZMIANA: Przekazujemy bbox_coords do aktualizacji mapy
             self.update_map(results, bbox=bbox_coords)
             
-        except ValueError as e:
+        except Exception as e:
             # Komunikat o błędzie na pasku i w wyskakującym oknie
-            self.statusBar().showMessage("Błąd wyszukiwania! Sprawdź filtry.")
-            QMessageBox.warning(self, "Błąd filtrów", str(e))
+            self.statusBar().showMessage("Błąd wyszukiwania lub rysowania mapy!")
+            QMessageBox.critical(self, "Błąd Systemu", f"Wystąpił nieoczekiwany błąd:\n{str(e)}")
 
 
     def update_map(self, events, bbox = None):
@@ -245,21 +238,29 @@ class EonetUI(QMainWindow):
         
         if bbox:
             min_lon, max_lon, min_lat, max_lat = bbox
+            real_min_lat = min(min_lat, max_lat)
+            real_max_lat = max(min_lat, max_lat)
+            real_min_lon = min(min_lon, max_lon)
+            real_max_lon = max(min_lon, max_lon)
             # Definiujemy rogi prostokąta (Folium wymaga formatu [lat, lon])
-            bounds = [[min_lat, min_lon], [max_lat, max_lon]]
-            
-            folium.Rectangle(
-                bounds=bounds,
-                color="#0078A8",       # Kolor obramowania
-                weight=2,              # Grubość linii
-                fill=True,
-                fill_color="#0078A8",  # Kolor wypełnienia
-                fill_opacity=0.2       # Przezroczystość (20%)
-            ).add_to(m)
-            
-            # Automatyczne dostosowanie kamery do narysowanego obszaru
-            m.fit_bounds(bounds)
-
+            if (real_max_lat > real_min_lat) and (real_max_lon > real_min_lon):
+                bounds = [[real_min_lat, real_min_lon], [real_max_lat, real_max_lon]]
+                
+                folium.Rectangle(
+                    bounds=bounds,
+                    color="#0078A8",       # Kolor obramowania
+                    weight=2,              # Grubość linii
+                    fill=True,
+                    fill_color="#0078A8",  # Kolor wypełnienia
+                    fill_opacity=0.2       # Przezroczystość (20%)
+                ).add_to(m)
+                
+                # Automatyczne dostosowanie kamery do narysowanego obszaru
+                m.fit_bounds(bounds)
+            else:
+                self.statusBar().showMessage("Uwaga: Obszar współrzędnych jest zbyt mały, by go narysować!")
+                QMessageBox.critical(self, "Błąd Współrzędnych", "Wystąpił błąd podczas rysowania")
+                            
         for event in events:
             title = event[1]
             cat_name = event[4]
@@ -268,7 +269,7 @@ class EonetUI(QMainWindow):
             
             if lat is not None and lon is not None:
                 folium.Marker(
-                    location=[lat, lon],
+                    location=[float(lat), float(lon)],
                     popup=f"<b>{title}</b><br>Kategoria: {cat_name}",
                     icon=folium.Icon(color="red", icon="info-sign")
                 ).add_to(m)
