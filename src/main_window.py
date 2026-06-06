@@ -4,7 +4,8 @@ import folium
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QDateEdit, QListWidget, QSpinBox,
-    QPushButton, QAbstractItemView, QGroupBox, QDoubleSpinBox, QCheckBox
+    QPushButton, QAbstractItemView, QGroupBox, QDoubleSpinBox, QCheckBox, 
+    QMessageBox
 )
 from PySide6.QtCore import QDate
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -119,6 +120,9 @@ class EonetUI(QMainWindow):
         main_layout.addWidget(self.web_view)    
         main_layout.addWidget(filters_group)
 
+        # Uruchomienie paska stanu na dole okna
+        self.statusBar().showMessage("Aplikacja gotowa do pracy.")
+
 
     def load_categories(self):
         """Pobiera unikalne kategorie z bazy i wrzuca do listy w UI"""
@@ -186,7 +190,8 @@ class EonetUI(QMainWindow):
         else:
             min_lon_val = max_lon_val = min_lat_val = max_lat_val = None
 
-        print("Szukam zdarzeń...")
+        self.statusBar().showMessage("Szukam zdarzeń...")
+        QApplication.processEvents() # Wymusza odświeżenie UI, żeby napis od razu się pojawił
         try:
             results = search_events(
                 db_path=self.db_path, status=status_val, date_from=date_from_val,
@@ -195,13 +200,14 @@ class EonetUI(QMainWindow):
                 min_lon=min_lon_val, max_lon=max_lon_val, 
                 min_lat=min_lat_val, max_lat=max_lat_val
             )
-            print(f"Znaleziono {len(results)} zdarzeń z podanymi filtrami!")
+            self.statusBar().showMessage(f"Znaleziono {len(results)} zdarzeń z podanymi filtrami")
             # ZMIANA: Przekazujemy bbox_coords do aktualizacji mapy
             self.update_map(results, bbox=bbox_coords)
             
         except ValueError as e:
-            # Przechwytujemy błąd kolegi (gdy ta sama kategoria jest na obu listach)
-            print(f"Błąd filtrów: {e}")
+            # Komunikat o błędzie na pasku i w wyskakującym oknie
+            self.statusBar().showMessage("Błąd wyszukiwania! Sprawdź filtry.")
+            QMessageBox.warning(self, "Błąd filtrów", str(e))
 
 
     def update_map(self, events, bbox = None):
