@@ -96,3 +96,41 @@ def search_events(
         results = cur.fetchall()
         
     return results
+
+
+def get_status_distribution(db_path: str) -> list[tuple]:
+    """Pobiera rozkład statusów zdarzeń (open vs closed)."""
+    query = "SELECT status, COUNT(*) FROM events GROUP BY status"
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(query)
+        return cur.fetchall()
+
+def get_top_categories(db_path: str, limit: int = 10) -> list[tuple]:
+    """Pobiera najczęściej występujące kategorie zdarzeń."""
+    query = """
+        SELECT c.title, COUNT(ec.event_id) 
+        FROM categories c 
+        JOIN event_categories ec ON c.id = ec.category_id 
+        GROUP BY c.title 
+        ORDER BY COUNT(ec.event_id) DESC 
+        LIMIT ?
+    """
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(query, (limit,))
+        return cur.fetchall()
+
+def get_events_over_time(db_path: str) -> list[tuple]:
+    """Pobiera liczbę zdarzeń w poszczególnych miesiącach."""
+    query = """
+        SELECT strftime('%Y-%m', created_at) as month, COUNT(*) 
+        FROM events 
+        WHERE month IS NOT NULL
+        GROUP BY month 
+        ORDER BY month
+    """
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(query)
+        return cur.fetchall()
