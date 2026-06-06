@@ -98,39 +98,38 @@ def search_events(
     return results
 
 
-def get_status_distribution(db_path: str) -> list[tuple]:
-    """Pobiera rozkład statusów zdarzeń (open vs closed)."""
-    query = "SELECT status, COUNT(*) FROM events GROUP BY status"
+def get_status_distribution(db_path: str, date_from: str = None, date_to: str = None) -> list[tuple]:
+    query = "SELECT status, COUNT(*) FROM events WHERE 1=1"
+    params = []
+    if date_from: query += " AND date(created_at) >= date(?)"; params.append(date_from)
+    if date_to: query += " AND date(created_at) <= date(?)"; params.append(date_to)
+    query += " GROUP BY status"
     with sqlite3.connect(db_path) as conn:
-        cur = conn.cursor()
-        cur.execute(query)
+        cur = conn.cursor(); cur.execute(query, params)
         return cur.fetchall()
 
-def get_top_categories(db_path: str, limit: int = 10) -> list[tuple]:
-    """Pobiera najczęściej występujące kategorie zdarzeń."""
+def get_top_categories(db_path: str, limit: int = 10, date_from: str = None, date_to: str = None) -> list[tuple]:
     query = """
-        SELECT c.title, COUNT(ec.event_id) 
-        FROM categories c 
+        SELECT c.title, COUNT(ec.event_id) FROM categories c 
         JOIN event_categories ec ON c.id = ec.category_id 
-        GROUP BY c.title 
-        ORDER BY COUNT(ec.event_id) DESC 
-        LIMIT ?
+        JOIN events e ON ec.event_id = e.id WHERE 1=1
     """
+    params = []
+    if date_from: query += " AND date(e.created_at) >= date(?)"; params.append(date_from)
+    if date_to: query += " AND date(e.created_at) <= date(?)"; params.append(date_to)
+    query += " GROUP BY c.title ORDER BY COUNT(ec.event_id) DESC LIMIT ?"
+    params.append(limit)
     with sqlite3.connect(db_path) as conn:
-        cur = conn.cursor()
-        cur.execute(query, (limit,))
+        cur = conn.cursor(); cur.execute(query, params)
         return cur.fetchall()
 
-def get_events_over_time(db_path: str) -> list[tuple]:
-    """Pobiera liczbę zdarzeń w poszczególnych miesiącach."""
-    query = """
-        SELECT strftime('%Y-%m', created_at) as month, COUNT(*) 
-        FROM events 
-        WHERE month IS NOT NULL
-        GROUP BY month 
-        ORDER BY month
-    """
+def get_events_over_time(db_path: str, date_from: str = None, date_to: str = None) -> list[tuple]:
+    # ZMIANA: strftime('%Y-%m-%d') grupuje teraz po DNIACH, a nie miesiącach!
+    query = "SELECT strftime('%Y-%m-%d', created_at) as day, COUNT(*) FROM events WHERE created_at IS NOT NULL"
+    params = []
+    if date_from: query += " AND date(created_at) >= date(?)"; params.append(date_from)
+    if date_to: query += " AND date(created_at) <= date(?)"; params.append(date_to)
+    query += " GROUP BY day ORDER BY day"
     with sqlite3.connect(db_path) as conn:
-        cur = conn.cursor()
-        cur.execute(query)
+        cur = conn.cursor(); cur.execute(query, params)
         return cur.fetchall()

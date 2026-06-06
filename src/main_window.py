@@ -18,34 +18,29 @@ class EonetUI(QMainWindow):
         super().__init__()
         self.db_path = "data/eonet.db"
         self.setWindowTitle("NASA EONET - Wyszukiwarka Zdarzeń")
-        self.resize(1200, 800) # Startowy rozmiar okna
+        self.resize(1300, 850) # Startowy rozmiar okna
 
-        # GŁÓWNY KONTENER NA ZAKŁADKI
-        self.tabs = QTabWidget()
-        self.setCentralWidget(self.tabs)
+        # 1. GŁÓWNY WIDŻET I UKŁAD
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget) # Układ poziomy całego okna
 
-        # --- ZAKŁADKA 1: WYSZUKIWARKA I MAPA ---
-        self.tab_map = QWidget()
-        main_layout = QHBoxLayout(self.tab_map)
-        self.tabs.addTab(self.tab_map, "Wyszukiwarka i Mapa")
-       
-        # --- LEWY PANEL (Kontrolki) ---
+        # --- LEWY PANEL (Filtry - teraz widoczne globalnie) ---
         filters_layout = QVBoxLayout()
         filters_group = QGroupBox("Filtry Wyszukiwania")
-        filters_group.setFixedWidth(300) # Sztywna szerokość bocznego panelu
+        filters_group.setFixedWidth(300)
         filters_group.setLayout(filters_layout)
 
-        # Status (Dopasowane do SQL: open / closed)
+        # Status
         filters_layout.addWidget(QLabel("Status zdarzenia:"))
         self.status_combo = QComboBox()
         self.status_combo.addItems(["Wszystkie", "open", "closed"])
         filters_layout.addWidget(self.status_combo)
 
-        # Daty (date_from i date_to)
+        # Daty
         filters_layout.addWidget(QLabel("Data od:"))
         self.date_from = QDateEdit(calendarPopup=True)
-        # Ustawiamy domyślnie datę na miesiąc wstecz
-        self.date_from.setDate(QDate.currentDate().addDays(-30)) 
+        self.date_from.setDate(QDate.currentDate().addDays(-2000)) 
         filters_layout.addWidget(self.date_from)
 
         filters_layout.addWidget(QLabel("Data do:"))
@@ -53,21 +48,20 @@ class EonetUI(QMainWindow):
         self.date_to.setDate(QDate.currentDate())
         filters_layout.addWidget(self.date_to)
 
-        # Kategorie - Biała lista (white_list)
+        # Kategorie (Biała lista)
         filters_layout.addWidget(QLabel("Kategorie (Biała lista):"))
         self.category_list = QListWidget()
-        # Pozwala zaznaczać wiele elementów (z wciśniętym Ctrl lub Shift)
-        self.category_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)     
+        self.category_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         filters_layout.addWidget(self.category_list)
 
-        # Limit wyników (limit)
+        # Limit
         filters_layout.addWidget(QLabel("Limit wyników:"))
         self.limit_spin = QSpinBox()
         self.limit_spin.setRange(1, 500)
-        self.limit_spin.setValue(100) # Domyślnie 100 tak jak w funkcji kolegi
+        self.limit_spin.setValue(100)
         filters_layout.addWidget(self.limit_spin)
 
-        # Kategorie - Czarna lista (black_list)
+        # Czarna lista
         filters_layout.addWidget(QLabel("Kategorie (Czarna lista):"))
         self.black_list_widget = QListWidget()
         self.black_list_widget.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
@@ -75,26 +69,23 @@ class EonetUI(QMainWindow):
 
         self.load_categories()
 
-        # Sortowanie (sort_by)
+        # Sortowanie
         filters_layout.addWidget(QLabel("Sortowanie:"))
         self.sort_combo = QComboBox()
         self.sort_combo.addItems(["Najnowsze", "Najstarsze"])
         filters_layout.addWidget(self.sort_combo)
 
-        # Współrzędne Geograficzne (BBox)
+        # BBox
         bbox_group = QGroupBox("Ogranicz obszar wyszukiwania")
         bbox_layout = QVBoxLayout()
-        
         self.enable_bbox_cb = QCheckBox("Aktywuj filtr współrzędnych")
         bbox_layout.addWidget(self.enable_bbox_cb)
 
-        # Pola liczbowe z ułamkami (z domyślnymi zakresami dla globu)
         self.min_lon = QDoubleSpinBox(); self.min_lon.setRange(-180, 180); self.min_lon.setEnabled(False)
         self.max_lon = QDoubleSpinBox(); self.max_lon.setRange(-180, 180); self.max_lon.setEnabled(False)
         self.min_lat = QDoubleSpinBox(); self.min_lat.setRange(-90, 90); self.min_lat.setEnabled(False)
         self.max_lat = QDoubleSpinBox(); self.max_lat.setRange(-90, 90); self.max_lat.setEnabled(False)
 
-        # Podpięcie logiki: kliknięcie checkboxa włącza/wyłącza pola
         self.enable_bbox_cb.toggled.connect(self.min_lon.setEnabled)
         self.enable_bbox_cb.toggled.connect(self.max_lon.setEnabled)
         self.enable_bbox_cb.toggled.connect(self.min_lat.setEnabled)
@@ -108,49 +99,45 @@ class EonetUI(QMainWindow):
         bbox_group.setLayout(bbox_layout)
         filters_layout.addWidget(bbox_group)
 
-        # Przycisk wyszukiwania
-        self.search_btn = QPushButton("Szukaj na mapie")
-        self.search_btn.clicked.connect(self.perform_search) 
-        
-        # Ostylowanie przycisku dla lepszego wyglądu
-        self.search_btn.setStyleSheet("background-color: #2b5c8f; color: white; padding: 8px; font-weight: bold;")
-        filters_layout.addWidget(self.search_btn)
-        
-        filters_layout.addStretch() # Wypycha elementy ładnie do góry, żeby nie wisiały na środku
+        # Przycisk filtrów
+        self.apply_btn = QPushButton("Zastosuj filtry")
+        self.apply_btn.clicked.connect(self.apply_all_filters) # <--- NOWA FUNKCJA
+        self.apply_btn.setStyleSheet("background-color: #2b5c8f; color: white; padding: 12px; font-weight: bold; font-size: 14px;")
+        filters_layout.addWidget(self.apply_btn)
+        filters_layout.addStretch()
 
-        # --- PRAWY PANEL (Mapa Folium w silniku przeglądarki) ---
+        # --- PRAWY PANEL (ZAKŁADKI) ---
+        self.tabs = QTabWidget()
+
+        # Zakładka 1: Mapa
+        self.tab_map = QWidget()
+        map_layout = QVBoxLayout(self.tab_map)
+        map_layout.setContentsMargins(0, 0, 0, 0) # Mapa na całą szerokość
         self.web_view = QWebEngineView()
         self.init_map()
+        map_layout.addWidget(self.web_view)
+        self.tabs.addTab(self.tab_map, "Mapa")
 
-        main_layout.addWidget(self.web_view)    
-        main_layout.addWidget(filters_group)
-
-        # Uruchomienie paska stanu na dole okna
-        self.statusBar().showMessage("Aplikacja gotowa do pracy.")
-
-        # --- ZAKŁADKA 2: DASHBOARD ANALITYCZNY ---
+        # Zakładka 2: Dashboard
         self.tab_dashboard = QWidget()
         dash_layout = QVBoxLayout(self.tab_dashboard)
-        self.tabs.addTab(self.tab_dashboard, "Raporty i Analizy")
-
-        # Przycisk odświeżania raportów
-        self.refresh_dash_btn = QPushButton("Generuj najnowsze raporty")
-        self.refresh_dash_btn.clicked.connect(self.generate_dashboard)
-        self.refresh_dash_btn.setStyleSheet("background-color: #2b5c8f; color: white; padding: 10px; font-weight: bold;")
-        dash_layout.addWidget(self.refresh_dash_btn)
-
-        # Układ poziomy dla dwóch wykresów kołowych obok siebie
+        
         pie_charts_layout = QHBoxLayout()
         self.chart_status_view = QWebEngineView()
         self.chart_categories_view = QWebEngineView()
         pie_charts_layout.addWidget(self.chart_status_view)
         pie_charts_layout.addWidget(self.chart_categories_view)
         
-        # Widok dla wykresu liniowego (na całej szerokości pod spodem)
         self.chart_time_view = QWebEngineView()
-
         dash_layout.addLayout(pie_charts_layout)
         dash_layout.addWidget(self.chart_time_view)
+        self.tabs.addTab(self.tab_dashboard, "Raporty i Analizy")
+
+        # Złożenie całości w main_layout
+        main_layout.addWidget(filters_group)
+        main_layout.addWidget(self.tabs)
+
+        self.statusBar().showMessage("Aplikacja gotowa do pracy.")
 
 
     def load_categories(self):
@@ -279,40 +266,59 @@ class EonetUI(QMainWindow):
         m.save(data, close_file=False)
         self.web_view.setHtml(data.getvalue().decode())
 
+
     def generate_dashboard(self):
-        """Pobiera dane z bazy poprzez db_queries i generuje wykresy Plotly"""
+        """Pobiera dane z bazy i generuje zoptymalizowane wykresy Plotly"""
         self.statusBar().showMessage("Generowanie raportów, proszę czekać...")
         QApplication.processEvents()
 
+        date_from_val = self.date_from.date().toString("yyyy-MM-dd")
+        date_to_val = self.date_to.date().toString("yyyy-MM-dd")
+
         try:
-            # 1. Wykres: Status (Open vs Closed)
-            data_status = get_status_distribution(self.db_path)
+            # 1. Wykres: Status
+            data_status = get_status_distribution(self.db_path, date_from_val, date_to_val)
             if data_status:
                 labels = [row[0].capitalize() for row in data_status]
                 values = [row[1] for row in data_status]
                 fig_status = px.pie(names=labels, values=values, title="Status zdarzeń", color_discrete_sequence=['#ef553b', '#636efa'])
+                fig_status.update_layout(title_y=0.9, margin=dict(t=80, b=20, l=20, r=20)) 
                 self.chart_status_view.setHtml(fig_status.to_html(include_plotlyjs='cdn'))
 
-            # 2. Wykres: Udział kategorii
-            data_cat = get_top_categories(self.db_path)
+            # 2. Wykres: Udział kategorii (Zmieniono układ, by odsunąć tytuł)
+            data_cat = get_top_categories(self.db_path, limit=10, date_from=date_from_val, date_to=date_to_val)
             if data_cat:
                 labels = [row[0] for row in data_cat]
                 values = [row[1] for row in data_cat]
-                fig_cat = px.pie(names=labels, values=values, hole=0.4, title="Top 10 Najczęstszych Kategorii")
+                fig_cat = px.pie(names=labels, values=values, hole=0.4, title="Rozkład Kategorii Zdarzeń")
+                # title_y=0.9 lekko zsuwa tytuł, a t=80 dodaje miejsce nad wykresem
+                fig_cat.update_layout(title_y=0.9, margin=dict(t=80, b=20, l=20, r=20))
                 self.chart_categories_view.setHtml(fig_cat.to_html(include_plotlyjs='cdn'))
 
-            # 3. Wykres: Zdarzenia w czasie (Liniowy)
-            data_time = get_events_over_time(self.db_path)
+            # 3. Wykres: Zdarzenia w czasie (Liniowy - po dniach!)
+            data_time = get_events_over_time(self.db_path, date_from_val, date_to_val)
             if data_time:
                 x_months = [row[0] for row in data_time]
                 y_counts = [row[1] for row in data_time]
-                fig_time = px.line(x=x_months, y=y_counts, markers=True, title="Liczba nowych zdarzeń w czasie (Miesiące)", labels={'x': 'Data', 'y': 'Liczba zdarzeń'})
-                fig_time.update_traces(line_color="#0078A8")
+                fig_time = px.line(x=x_months, y=y_counts, markers=True, title="Liczba nowych zdarzeń w czasie (Dni)", labels={'x': 'Data', 'y': 'Liczba zdarzeń'})
+                fig_time.update_traces(line_color="#0078A8", line_width=3, marker_size=8)
+                fig_time.update_layout(margin=dict(t=50, b=20, l=20, r=20))
                 self.chart_time_view.setHtml(fig_time.to_html(include_plotlyjs='cdn'))
 
             self.statusBar().showMessage("Raporty zostały wygenerowane pomyślnie.")
+            
         except Exception as e:
-            QMessageBox.critical(self, "Błąd generowania raportów", f"Wystąpił błąd przy pobieraniu danych: {e}")
+            self.statusBar().showMessage("Błąd podczas generowania wykresów!")
+            QMessageBox.critical(self, "Błąd generowania raportów", f"Wystąpił błąd przy pobieraniu danych:\n{e}")
+
+    def apply_all_filters(self):
+        """Uruchamia odświeżanie mapy oraz dashboardu na podstawie filtrów"""
+        self.statusBar().showMessage("Przetwarzanie danych, proszę czekać...")
+        QApplication.processEvents()
+        
+        # Najpierw mapa, potem dashboard
+        self.perform_search()
+        self.generate_dashboard()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
