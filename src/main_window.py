@@ -208,15 +208,16 @@ class EonetUI(QMainWindow):
                 white_list=white_list_val, black_list=black_list_val,
                 min_lon=min_lon_val, max_lon=max_lon_val, 
                 min_lat=min_lat_val, max_lat=max_lat_val
-            )
-            self.statusBar().showMessage(f"Znaleziono {len(results)} zdarzeń z podanymi filtrami")
+            )            
             # ZMIANA: Przekazujemy bbox_coords do aktualizacji mapy
             self.update_map(results, bbox=bbox_coords)
-            
+            return len(results)
+        
         except Exception as e:
             # Komunikat o błędzie na pasku i w wyskakującym oknie
             self.statusBar().showMessage("Błąd wyszukiwania lub rysowania mapy!")
             QMessageBox.critical(self, "Błąd Systemu", f"Wystąpił nieoczekiwany błąd:\n{str(e)}")
+            return 0
 
 
     def update_map(self, events, bbox = None):
@@ -300,12 +301,18 @@ class EonetUI(QMainWindow):
             if data_time:
                 x_months = [row[0] for row in data_time]
                 y_counts = [row[1] for row in data_time]
-                fig_time = px.line(x=x_months, y=y_counts, markers=True, title="Liczba nowych zdarzeń w czasie (Dni)", labels={'x': 'Data', 'y': 'Liczba zdarzeń'})
-                fig_time.update_traces(line_color="#0078A8", line_width=3, marker_size=8)
+                
+                # ZMIANA: Używamy px.scatter zamiast px.line
+                fig_time = px.scatter(
+                    x=x_months, y=y_counts, 
+                    title="Liczba nowych zdarzeń w czasie (Dni)", 
+                    labels={'x': 'Data', 'y': 'Liczba zdarzeń'}
+                )
+                # Ustawiamy jednolity kolor i wielkość kropek
+                fig_time.update_traces(marker=dict(color="#0078A8", size=8))
                 fig_time.update_layout(margin=dict(t=50, b=20, l=20, r=20))
                 self.chart_time_view.setHtml(fig_time.to_html(include_plotlyjs='cdn'))
 
-            self.statusBar().showMessage("Raporty zostały wygenerowane pomyślnie.")
             
         except Exception as e:
             self.statusBar().showMessage("Błąd podczas generowania wykresów!")
@@ -316,9 +323,14 @@ class EonetUI(QMainWindow):
         self.statusBar().showMessage("Przetwarzanie danych, proszę czekać...")
         QApplication.processEvents()
         
+        events_count = self.perform_search()
+        
         # Najpierw mapa, potem dashboard
         self.perform_search()
         self.generate_dashboard()
+
+        if events_count is not None:
+            self.statusBar().showMessage(f"Poprawnie wygenerowano raporty i mapę dla {events_count} zdarzeń.")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
