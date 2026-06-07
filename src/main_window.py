@@ -1,6 +1,7 @@
 import sys
 import io
 import folium
+from collections import Counter
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QDateEdit, QListWidget, QSpinBox,
@@ -211,13 +212,13 @@ class EonetUI(QMainWindow):
             )            
             # ZMIANA: Przekazujemy bbox_coords do aktualizacji mapy
             self.update_map(results, bbox=bbox_coords)
-            return len(results)
+            return results
         
         except Exception as e:
             # Komunikat o błędzie na pasku i w wyskakującym oknie
             self.statusBar().showMessage("Błąd wyszukiwania lub rysowania mapy!")
             QMessageBox.critical(self, "Błąd Systemu", f"Wystąpił nieoczekiwany błąd:\n{str(e)}")
-            return 0
+            return None
 
 
     def update_map(self, events, bbox = None):
@@ -268,69 +269,73 @@ class EonetUI(QMainWindow):
         self.web_view.setHtml(data.getvalue().decode())
 
 
-    def generate_dashboard(self):
-        """Pobiera dane z bazy i generuje zoptymalizowane wykresy Plotly"""
-        self.statusBar().showMessage("Generowanie raportów, proszę czekać...")
-        QApplication.processEvents()
-
-        date_from_val = self.date_from.date().toString("yyyy-MM-dd")
-        date_to_val = self.date_to.date().toString("yyyy-MM-dd")
+    def generate_dashboard(self, events):
+        """Generuje wykresy Plotly zliczając wartości bezpośrednio z przekazanej listy zdarzeń"""
+        
+        # Zabezpieczenie: Jeśli lista jest pusta, czyścimy wykresy
+        if not events:
+            self.chart_status_view.setHtml("<h2 style='text-align:center; font-family:sans-serif;'>Brak danych do wyświetlenia</h2>")
+            self.chart_categories_view.setHtml("<h2 style='text-align:center; font-family:sans-serif;'>Brak danych do wyświetlenia</h2>")
+            self.chart_time_view.setHtml("<h2 style='text-align:center; font-family:sans-serif;'>Brak danych do wyświetlenia</h2>")
+            return
 
         try:
-            # 1. Wykres: Status
-            data_status = get_status_distribution(self.db_path, date_from_val, date_to_val)
-            if data_status:
-                labels = [row[0].capitalize() for row in data_status]
-                values = [row[1] for row in data_status]
+            # 1. Wykres: Status (e[2] to status)
+            status_counts = Counter([e[2] for e in events if e[2]])
+            if status_counts:
+                labels = [s.capitalize() for s in status_counts.keys()]
+                values = list(status_counts.values())
                 fig_status = px.pie(names=labels, values=values, title="Status zdarzeń", color_discrete_sequence=['#ef553b', '#636efa'])
                 fig_status.update_layout(title_y=0.9, margin=dict(t=80, b=20, l=20, r=20)) 
                 self.chart_status_view.setHtml(fig_status.to_html(include_plotlyjs='cdn'))
 
-            # 2. Wykres: Udział kategorii (Zmieniono układ, by odsunąć tytuł)
-            data_cat = get_top_categories(self.db_path, limit=10, date_from=date_from_val, date_to=date_to_val)
-            if data_cat:
-                labels = [row[0] for row in data_cat]
-                values = [row[1] for row in data_cat]
-                fig_cat = px.pie(names=labels, values=values, hole=0.4, title="Rozkład Kategorii Zdarzeń")
-                # title_y=0.9 lekko zsuwa tytuł, a t=80 dodaje miejsce nad wykresem
-                fig_cat.update_layout(title_y=0.9, margin=dict(t=80, b=20, l=20, r=20))
+            # 2. Wykres: Udział kategorii (e[4] to kategoria)
+            cat_counts = Counter([e[4] for e in events if e[4]])
+            if cat_counts:
+                top_cats = cat_counts.most_common(10) # Bierzemy Top 10 zliczonych
+                labels = [c[0] for c in top_cats]
+                values = [c[1] for c in top_cats]
+                fig_cat = px.pie(names=labels, values=values, hole=0.4)
+                fig_cat.update_layout(
+                    title={'text': "Rozkład Kategorii Zdarzeń", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'},
+                    margin=dict(t=80, b=20, l=20, r=20)
+                )
                 self.chart_categories_view.setHtml(fig_cat.to_html(include_plotlyjs='cdn'))
 
-            # 3. Wykres: Zdarzenia w czasie (Liniowy - po dniach!)
-            data_time = get_events_over_time(self.db_path, date_from_val, date_to_val)
-            if data_time:
-                x_months = [row[0] for row in data_time]
-                y_counts = [row[1] for row in data_time]
+            # 3. Wykres: Zdarzenia w czasie (e[3] to data z czasem, bierzemy samo YYYY-MM-DD, czyli [:10])
+            date_counts = Counter([e[3][:10] for e in events if e[3]])
+            if date_counts:
+                sorted_dates = sorted(date_counts.items()) # Sortujemy chronologicznie
+                x_months = [d[0] for d in sorted_dates]
+                y_counts = [d[1] for d in sorted_dates]
                 
-                # ZMIANA: Używamy px.scatter zamiast px.line
                 fig_time = px.scatter(
                     x=x_months, y=y_counts, 
-                    title="Liczba nowych zdarzeń w czasie (Dni)", 
-                    labels={'x': 'Data', 'y': 'Liczba zdarzeń'}
+                    title="Liczba zdarzeń w czasie (Dni)", 
+                    labels={'x': 'Data', 'y': 'Liczba zdarzeń z nałożonym limitem'}
                 )
-                # Ustawiamy jednolity kolor i wielkość kropek
                 fig_time.update_traces(marker=dict(color="#0078A8", size=8))
                 fig_time.update_layout(margin=dict(t=50, b=20, l=20, r=20))
                 self.chart_time_view.setHtml(fig_time.to_html(include_plotlyjs='cdn'))
 
-            
         except Exception as e:
-            self.statusBar().showMessage("Błąd podczas generowania wykresów!")
-            QMessageBox.critical(self, "Błąd generowania raportów", f"Wystąpił błąd przy pobieraniu danych:\n{e}")
+            QMessageBox.critical(self, "Błąd generowania raportów", f"Wystąpił błąd przy budowaniu wykresów:\n{e}")
+
 
     def apply_all_filters(self):
         """Uruchamia odświeżanie mapy oraz dashboardu na podstawie filtrów"""
         self.statusBar().showMessage("Przetwarzanie danych, proszę czekać...")
         QApplication.processEvents()
         
-        events_count = self.perform_search()
-        
-        # Najpierw mapa, potem dashboard
-        self.perform_search()
-        self.generate_dashboard()
+        # Pobieramy pełne wyniki z funkcji wyszukującej (która od razu aktualizuje mapę)
+        events = self.perform_search()
 
-        if events_count is not None:
-            self.statusBar().showMessage(f"Poprawnie wygenerowano raporty i mapę dla {events_count} zdarzeń.")
+        # Generujemy wykresy bazując DOKŁADNIE na tych samych danych co mapa
+        if events is not None:
+            self.generate_dashboard(events)
+            self.statusBar().showMessage(f"Poprawnie wygenerowano raporty i mapę dla {len(events)} zdarzeń.")
+        else:
+            self.statusBar().showMessage("Wystąpił błąd lub brak wyników.")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
