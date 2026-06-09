@@ -110,3 +110,13 @@ uv run pytest
 ```bash
 uv run python src/main_window.py
 ```
+
+---
+
+### 8. Sprawdzenie import log
+
+```bash
+uv run python -c "import sqlite3; c=sqlite3.connect('data/eonet.db'); [print(row) for row in c.execute('SELECT id, started_at, finished_at, endpoint_url, status, records_downloaded, records_inserted, error_message FROM import_log ORDER BY id DESC )]"
+```
+
+---
