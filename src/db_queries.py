@@ -28,7 +28,7 @@ def search_events(
             e.id, 
             e.title, 
             e.status, 
-            e.created_at, 
+            eg.geometry_date, 
             c.title AS category_name,
             eg.longitude,
             eg.latitude
@@ -47,11 +47,11 @@ def search_events(
         params.append(status)
 
     if date_from:
-        query += " AND date(e.created_at) >= date(?)"
+        query += " AND date(eg.geometry_date) >= date(?)"
         params.append(date_from)
 
     if date_to:
-        query += " AND date(e.created_at) <= date(?)"
+        query += " AND date(eg.geometry_date) <= date(?)"
         params.append(date_to)
         
     # 4. Logika Białej i Czarnej listy (White list ma priorytet)
@@ -81,9 +81,9 @@ def search_events(
     # 6. Sortowanie
     match sort_by.lower():
         case "oldest":
-            query += " ORDER BY e.created_at ASC"
+            query += " ORDER BY eg.geometry_date ASC"
         case "recent" | _:
-            query += " ORDER BY e.created_at DESC"
+            query += " ORDER BY eg.geometry_date DESC"
 
     # 7. Limit
     query += " LIMIT ?"
@@ -96,3 +96,51 @@ def search_events(
         results = cur.fetchall()
         
     return results
+
+
+def get_status_distribution(db_path: str, date_from: str = None, date_to: str = None) -> list[tuple]:
+    query = """
+        SELECT e.status, COUNT(DISTINCT e.id) 
+        FROM events e 
+        JOIN event_geometries eg ON e.id = eg.event_id 
+        WHERE 1=1
+    """
+    params = []
+    if date_from: query += " AND date(eg.geometry_date) >= date(?)"; params.append(date_from)
+    if date_to: query += " AND date(eg.geometry_date) <= date(?)"; params.append(date_to)
+    query += " GROUP BY e.status"
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor(); cur.execute(query, params)
+        return cur.fetchall()
+
+def get_top_categories(db_path: str, limit: int = 10, date_from: str = None, date_to: str = None) -> list[tuple]:
+    query = """
+        SELECT c.title, COUNT(DISTINCT e.id) 
+        FROM categories c 
+        JOIN event_categories ec ON c.id = ec.category_id 
+        JOIN events e ON ec.event_id = e.id
+        JOIN event_geometries eg ON e.id = eg.event_id
+        WHERE 1=1
+    """
+    params = []
+    if date_from: query += " AND date(eg.geometry_date) >= date(?)"; params.append(date_from)
+    if date_to: query += " AND date(eg.geometry_date) <= date(?)"; params.append(date_to)
+    query += " GROUP BY c.title ORDER BY COUNT(DISTINCT e.id) DESC LIMIT ?"
+    params.append(limit)
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor(); cur.execute(query, params)
+        return cur.fetchall()
+
+def get_events_over_time(db_path: str, date_from: str = None, date_to: str = None) -> list[tuple]:
+    query = """
+        SELECT strftime('%Y-%m-%d', geometry_date) as day, COUNT(*) 
+        FROM event_geometries 
+        WHERE geometry_date IS NOT NULL
+    """
+    params = []
+    if date_from: query += " AND date(geometry_date) >= date(?)"; params.append(date_from)
+    if date_to: query += " AND date(geometry_date) <= date(?)"; params.append(date_to)
+    query += " GROUP BY day ORDER BY day"
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor(); cur.execute(query, params)
+        return cur.fetchall()
