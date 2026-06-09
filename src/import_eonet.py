@@ -17,8 +17,8 @@ load_dotenv()
 
 API_URL = os.getenv("EONET_API_URL", "https://eonet.gsfc.nasa.gov/api/v3/events")
 DB_PATH = os.getenv("DB_PATH", "data/eonet.db")
-EONET_DAYS = int(os.getenv("EONET_DAYS", "30"))
-EONET_LIMIT = int(os.getenv("EONET_LIMIT", "100"))
+EONET_DAYS = int(os.getenv("EONET_DAYS", "1000"))
+EONET_LIMIT = int(os.getenv("EONET_LIMIT", "10000"))
 EONET_STATUS = os.getenv("EONET_STATUS", "open")
 TIMEOUT_SECONDS = 30
 
