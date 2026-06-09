@@ -4,3 +4,4 @@ folium
 PySide6
 plotly
 pandas
+pytest
