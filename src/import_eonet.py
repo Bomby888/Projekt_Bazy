@@ -363,7 +363,7 @@ def run_import() -> ImportStats:
                         )
                         sources_saved += 1
 
-                for geometry in event.get("geometries", []):
+                for geometry in event.get("geometry", []):
                     geometries_saved += save_geometry(conn, event_db_id, geometry, started_at)
 
             conn.commit()
