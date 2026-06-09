@@ -1,6 +1,6 @@
-# Projekt - #TD
+# Projekt semestralny z przedmiotu **Wprowadzenie do Baz Danych**.
 
-Projekt korzysta z API EONET- Earth Natural Event Tracker.
+Projekt korzysta z API NASA EONET — Earth Observatory Natural Event Tracker — i zapisuje dane o zdarzeniach naturalnych w bazie SQLite.
 
 ---
 
@@ -8,22 +8,28 @@ Projekt korzysta z API EONET- Earth Natural Event Tracker.
 
 ![Diagram ERD](assets/diagram.png)
 
+- pobieranie danych z API EONET,
+- zapis zdarzeń do bazy SQLite,
+- zapis kategorii, źródeł i geometrii zdarzeń,
+- filtrowanie zdarzeń według statusu, dat, kategorii i współrzędnych,
+- testy jednostkowe zgodne z `pytest`.
+
 ---
 
 
 ## Technologie
 
+- Python
+- SQLite
+- requests
+- python-dotenv
+- pytest
+- uv
+
 ---
 
-## Struktura projektu
-
-Glorp
-
----
 
 ## Instalacja
-
-
 
 ### 1. Instalacja uv
 
@@ -61,13 +67,13 @@ uv pip install -r requirements.txt
 
 ### 4. Konfiguracja pliku `.env`
 
-W głównym folderze projektu utwórz plik `.env`:
+W głównym folderze projektu jest plik `.env`:
 
 ```env
-EONET_API_URL=https://eonet.gsfc.nasa.gov/api/v2.1/events
+EONET_API_URL=https://eonet.gsfc.nasa.gov/api/v3/events
 DB_PATH=data/eonet.db
-EONET_DAYS=30
-EONET_LIMIT=100
+EONET_DAYS=1000
+EONET_LIMIT=10000
 EONET_STATUS=open
 ```
 
@@ -91,8 +97,16 @@ uv run python src/import_eonet.py
 
 ---
 
-### 6. Sprawdzenie poprawności zaimportowanych danych
+### 6. Sprawdzenie poprawności projektu
 
 ```bash
-uv run python check_db.py
+uv run pytest
+```
+
+---
+
+### 7. Uruchomienie aplikacji
+
+```bash
+uv run python src/main_window.py
 ```
