@@ -118,9 +118,12 @@ def create_schema(conn: sqlite3.Connection) -> None:
     )
 
 
-def fetch_events() -> list[dict[str, Any]]:
+def fetch_events(override_days: int | None = None) -> list[dict[str, Any]]:
+    # Używa podanych dni z pętli (np. 2) lub globalnych z .env (np. 1000)
+    days_to_fetch = override_days if override_days is not None else EONET_DAYS
+    
     params = {
-        "days": EONET_DAYS,
+        "days": days_to_fetch,
         "limit": EONET_LIMIT,
         "status": EONET_STATUS,
     }
@@ -313,7 +316,7 @@ def write_import_log(
     conn.commit()
 
 
-def run_import() -> ImportStats:
+def run_import(override_days: int | None = None) -> ImportStats:
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 
     started_at = utc_now_iso()
@@ -322,7 +325,7 @@ def run_import() -> ImportStats:
         create_schema(conn)
 
         try:
-            events = fetch_events()
+            events = fetch_events(override_days)
 
             events_saved = 0
             categories_saved = 0
@@ -401,13 +404,53 @@ def run_import() -> ImportStats:
             raise
 
 
-if __name__ == "__main__":
-    stats = run_import()
+import time
 
-    print("Import zakończony.")
-    print(f"Pobrano zdarzeń: {stats.records_downloaded}")
-    print(f"Zapisano/odświeżono events: {stats.events_saved}")
-    print(f"Zapisano/odświeżono categories: {stats.categories_saved}")
-    print(f"Zapisano/odświeżono sources: {stats.sources_saved}")
-    print(f"Zapisano geometries: {stats.geometries_saved}")
-    print(f"Baza danych: {DB_PATH}")
+def start_live_sync(interval_minutes: int = 5, check_days: int = 2):
+    """
+    Funkcja sprawdzająca czy baza istnieje (jeśli nie - pełny import),
+    a następnie odświeżająca bazę co 5 minut danymi z ostatnich 2 dni.
+    """
+    db_path = Path(DB_PATH)
+
+    # 1. SPRAWDZENIE DLA NOWYCH UŻYTKOWNIKÓW (Brak bazy = pełny import)
+    if not db_path.exists() or db_path.stat().st_size == 0:
+        print("[START] Brak bazy danych. Wykonywanie pełnego importu historycznego...")
+        stats = run_import()
+        print(f"[START] Pełny import zakończony. Pomyślnie przetworzono {stats.events_saved} zdarzeń.\n")
+    else:
+        print("[START] Baza danych istnieje. Pomijam początkowy pełny import.\n")
+
+    print("=== TRYB LIVE SYNC AKTYWNY ===")
+    print(f"Interwał odświeżania : {interval_minutes} minut")
+    print(f"Zakres sprawdzania   : ostatnie {check_days} dni")
+    print("Aby zatrzymać program, wciśnij Ctrl+C w terminalu.\n")
+
+    # 2. NIESKOŃCZONA PĘTLA AKTUALIZACJI
+    while True:
+        try:
+            current_time = datetime.now().strftime("%H:%M:%S")
+            print(f"[{current_time}] Sprawdzanie aktualizacji z NASA EONET...")
+            
+            # Odpalamy import tylko dla wycinka dni
+            stats = run_import(override_days=check_days)
+            
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Zakończono sprawdzanie.")
+            print(f" -> Pobrane i sprawdzone z API: {stats.records_downloaded}")
+            if stats.events_saved > 0 or stats.geometries_saved > 0:
+                 print(f" -> Dopisane/zaktualizowane do bazy: {stats.events_saved} zdarzeń, {stats.geometries_saved} geometrii.")
+            else:
+                 print(" -> Brak nowości. Baza aktualna.")
+                 
+            print(f"Oczekiwanie {interval_minutes} minut na kolejny cykl...\n")
+
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] BŁĄD PĘTLI: {e}. Ponowna próba za {interval_minutes} minut...\n")
+        
+        # Uśpienie na żądaną liczbę minut
+        time.sleep(interval_minutes * 60)
+
+
+if __name__ == "__main__":
+    # Startujemy nasz nowy, nieskończony proces
+    start_live_sync(interval_minutes=5, check_days=2)
