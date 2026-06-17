@@ -8,11 +8,11 @@ Projekt korzysta z API NASA EONET — Earth Observatory Natural Event Tracker �
 
 ![Diagram ERD](assets/diagram.png)
 
-- pobieranie danych z API EONET,
+- pobieranie okresowe danych z API EONET,
 - zapis zdarzeń do bazy SQLite,
 - zapis kategorii, źródeł i geometrii zdarzeń,
 - filtrowanie zdarzeń według statusu, dat, kategorii i współrzędnych,
-- testy jednostkowe zgodne z `pytest`.
+- testy jednostkowe.
 
 ---
 
@@ -22,6 +22,7 @@ Projekt korzysta z API NASA EONET — Earth Observatory Natural Event Tracker �
 - Python
 - SQLite
 - requests
+- PySide6
 - python-dotenv
 - pytest
 - uv
